@@ -63,6 +63,7 @@ typedef struct struct_message {
   float gy;
   float gz;
   int tempo;
+  int distance;
 } struct_message;
 
 struct_message incoming_readings[8];
@@ -106,6 +107,8 @@ int store_data(float latitude, float longitude) {
         file.print(incoming_readings[i].gx);
         file.print(";");
         file.print(incoming_readings[i].gy);
+        file.print(";");
+        file.print(incoming_readings[i].distance);
         file.print(";");
         file.print(incoming_readings[i].gz);
         file.println();
@@ -162,7 +165,7 @@ void setup() {
         File file = SD.open("/data_log.csv", FILE_WRITE);
     
         if (file) { // Check if the file opened successfully
-            file.println("Timestamp;Latitude;Longitude;ax;ay;az;gx;gy;gz");
+            file.println("Timestamp;Latitude;Longitude;distance;ax;ay;az;gx;gy;gz");
             file.close();
         }
     }
