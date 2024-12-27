@@ -52,6 +52,9 @@ int satellites = 0;
 float decimalLatitude = 0.0;
 float decimalLongitude = 0.0;
 bool fix = false;
+int sent = 0;
+int prev_value = 0;
+int value = 0;
 
 uint8_t BROADCST_ADDRESS[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -91,8 +94,8 @@ int store_data(float latitude, float longitude) {
         Serial.println("Failed to open file for writing");
         return -1;
     }
-    for (int i = 0; i < 5; i++) {
-        file.print(incoming_readings[i].tempo + last_sent);
+    for (int i = 0; i <= 5; i++) {
+        file.print(incoming_readings[i].tempo);
         file.print(";");
         file.print(latitude, 6);
         file.print(";");
@@ -123,6 +126,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     Serial.println(len);
     tempo = incoming_readings[0].tempo;
     store_data(decimalLatitude, decimalLongitude);
+    Serial.println(incoming_readings[0].ax);
 }
 
 void setup() {
@@ -175,7 +179,7 @@ void setup() {
 }
 
 void loop() {
-    if (millis() - send_time >= 1200 && recording) {
+ /*   if (millis() - send_time >= 1200 && recording) {
         int i = 16;
         if (esp_now_send(BROADCST_ADDRESS, (uint8_t *) &i, sizeof(i)) == ESP_NOW_SEND_SUCCESS) {
             last_sent = millis();
@@ -183,6 +187,11 @@ void loop() {
             Serial.println("Failed");
         }
         send_time = millis();
+    }*/
+    value = recording;
+    if(prev_value != value) {
+        esp_now_send(BROADCST_ADDRESS, (uint8_t*)&value, sizeof(int));
+        prev_value = value;
     }
 
     while (Serial_software.available() > 0) {
