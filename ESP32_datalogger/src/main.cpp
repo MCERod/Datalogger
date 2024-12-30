@@ -8,6 +8,7 @@
 #include <SD.h>
 #include <FS.h>
 #include <WebServer.h>
+#include <HardwareSerial.h>
 
 #define CS_PIN 5
 #define MOSI_PIN 23
@@ -46,7 +47,8 @@ String filename = "/data_log.csv";
 esp_now_peer_info peer_info[3];
 int count = 0;
 
-SoftwareSerial Serial_software(18, 19);
+//SoftwareSerial Serial_software(18, 19);
+HardwareSerial Serial_software(2);
 TinyGPSPlus gps;
 
 int satellites = 0;
@@ -165,11 +167,67 @@ void handleFileDownload() {
     }
 }
 
+void handleFileList() {
+    String path = "/";
+    if (server.hasArg("dir")) {
+        path = server.arg("dir");
+    }
+
+    File dir = SD.open(path);
+    if (!dir || !dir.isDirectory()) {
+        server.send(500, "text/plain", "Failed to open directory");
+        return;
+    }
+
+    String page = "<h1>File List</h1><ul>";
+    while (true) {
+        File entry = dir.openNextFile();
+        if (!entry) {
+            // No more files
+            break;
+        }
+        if (entry.isDirectory()) {
+            page += "<li>[DIR] " + String(entry.name()) + "</li>";
+        } else {
+            String fileName = String(entry.name());
+            page += "<li>" + fileName;
+            page += " <form style='display:inline;' method='POST' action='/delete'>";
+            page += "<input type='hidden' name='file' value='" + fileName + "'>";
+            page += "<button type='submit'>Delete</button></form></li>";
+        }
+        entry.close();
+    }
+    page += "</ul>";
+    server.send(200, "text/html", page);
+}
+
+void handleDelete() {
+    if (server.method() == HTTP_POST) {
+        if (server.hasArg("file")) {
+            String fileName = server.arg("file");
+            if (SD.exists("/" + fileName)) {
+                if (SD.remove("/" + fileName)) {
+                    server.send(200, "text/plain", "File deleted successfully.");
+                } else {
+                    server.send(500, "text/plain", "Failed to delete file.");
+                }
+            } else {
+                server.send(404, "text/plain", "File not found.");
+            }
+        } else {
+            server.send(400, "text/plain", "BAD REQUEST");
+        }
+    } else {
+        server.send(405, "text/plain", "Method Not Allowed");
+    }
+}
+
 void setup() {
     update_display = millis();
     Serial.begin(9600);
     WiFi.mode(WIFI_STA);
-    Serial_software.begin(9600);
+    //Serial_software.begin(9600);
+    Serial_software.begin(9600, SERIAL_8N1, 18, 19);
     display.begin();
     display.setFont();
     display.fillScreen(OLED_Backround_Color);
@@ -245,6 +303,8 @@ void setup() {
 
         server.on("/", handleRoot);
         server.onNotFound(handleFileDownload);
+        server.on("/files", HTTP_GET, handleFileList);
+        server.on("/delete", HTTP_POST, handleDelete);
         server.begin();
         Serial.println("Web server started");
     //}
@@ -256,12 +316,12 @@ void loop() {
         esp_now_send(BROADCST_ADDRESS, (uint8_t*)&value, sizeof(int));
         prev_value = value;
     }
-
+    Serial.println(Serial_software.read());
     while (Serial_software.available() > 0) {
         char gpsChar = Serial_software.read();
         Serial.write(gpsChar);
         gps.encode(gpsChar);
-
+        Serial.println("GPS");
         if (gps.location.isUpdated()) {
             decimalLatitude = gps.location.lat();
             decimalLongitude = gps.location.lng();
@@ -314,7 +374,7 @@ void loop() {
             display.println(" Conected");
             display.setTextColor(OLED_Color_White);
             display.println("");
-            display.print("  ");
+            display.print(" ");
             display.println(WiFi.localIP());
         }
         else{
@@ -340,6 +400,5 @@ void loop() {
 
     if (recording && WiFi.status() == WL_CONNECTED) {
         WiFi.disconnect();
-        Serial.println("Disconnected from Wi-Fi");
     }
 }
