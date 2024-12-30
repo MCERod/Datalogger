@@ -7,6 +7,7 @@
 #include <TinyGPSPlus.h>
 #include <SD.h>
 #include <FS.h>
+#include <WebServer.h>
 
 #define CS_PIN 5
 #define MOSI_PIN 23
@@ -41,7 +42,7 @@ unsigned long last_sent = 0;
 float ax, ay, az, gx, gy, gz;
 int tempo;
 String success;
-
+String filename = "/data_log.csv";
 esp_now_peer_info peer_info[3];
 int count = 0;
 
@@ -54,19 +55,19 @@ float decimalLongitude = 0.0;
 bool fix = false;
 int sent = 0;
 int prev_value = 0;
-int value = 0;
+volatile int value = 0;
 
 uint8_t BROADCST_ADDRESS[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 typedef struct struct_message {
-  float ax;
-  float ay;
-  float az;
-  float gx;
-  float gy;
-  float gz;
-  int tempo;
-  int distance;
+    float ax;
+    float ay;
+    float az;
+    float gx;
+    float gy;
+    float gz;
+    int distance;
+    int tempo;
 } struct_message;
 
 struct_message incoming_readings[6];
@@ -82,14 +83,18 @@ volatile boolean recording = false;
 //struct_message incomingReadings;
 
 void start_recordings() {
-    recording = !recording;
+    static unsigned long lastPress = millis();
+    while (millis() - lastPress < 100);
+    if(digitalRead(36) == LOW) {
+        recording = !recording;
+    }
 }
 
 int store_data(float latitude, float longitude) {
     if (!recording) {
         return 0;
     }
-    File file = SD.open("/data_log.csv", FILE_APPEND);
+    File file = SD.open(filename, FILE_APPEND);
     if (!file) {
         Serial.println("Failed to open file for writing");
         return -1;
@@ -101,6 +106,8 @@ int store_data(float latitude, float longitude) {
         file.print(";");
         file.print(longitude, 6);
         file.print(";");
+        file.print(incoming_readings[i].distance);
+        file.print(";");
         file.print(incoming_readings[i].ax);
         file.print(";");
         file.print(incoming_readings[i].ay);
@@ -111,9 +118,8 @@ int store_data(float latitude, float longitude) {
         file.print(";");
         file.print(incoming_readings[i].gy);
         file.print(";");
-        file.print(incoming_readings[i].distance);
-        file.print(";");
         file.print(incoming_readings[i].gz);
+        file.print(";");
         file.println();
     }
     file.close();
@@ -127,6 +133,36 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     tempo = incoming_readings[0].tempo;
     store_data(decimalLatitude, decimalLongitude);
     Serial.println(incoming_readings[0].ax);
+}
+
+WebServer server(80);
+
+void handleRoot() {
+    File root = SD.open("/");
+    String html = "<html><body><h1>SD Card Files</h1><ul>";
+    while (File file = root.openNextFile()) {
+        if (!file.isDirectory()) {
+            html += "<li><a href=\"/download/" + String(file.name()) + "\">" + String(file.name()) + "</a></li>";
+        }
+    }
+    html += "</ul></body></html>";
+    server.send(200, "text/html", html);
+}
+
+void handleFileDownload() {
+    String path = server.uri();
+    if (path.startsWith("/download/")) {
+        String filename = path.substring(strlen("/download/"));
+        File file = SD.open("/" + filename);
+        if (file && !file.isDirectory()) {
+            server.streamFile(file, "application/octet-stream");
+            file.close();
+        } else {
+            server.send(404, "text/plain", "File Not Found");
+        }
+    } else {
+        server.send(404, "text/plain", "Not Found");
+    }
 }
 
 void setup() {
@@ -166,28 +202,55 @@ void setup() {
         return;
     } else {
         Serial.println("Card Mount Success");
-        File file = SD.open("/data_log.csv", FILE_WRITE);
+
+
+        
+    if (SD.exists(filename)) {
+        int fileIndex = 1;
+        String newFilename;
+        while (SD.exists(newFilename = "/data_log(" + String(fileIndex) + ").csv")) {
+            fileIndex++;
+        }
+        filename = newFilename;
+    }
+
+        File file = SD.open(filename, FILE_WRITE);
     
         if (file) { // Check if the file opened successfully
-            file.println("Timestamp;Latitude;Longitude;distance;ax;ay;az;gx;gy;gz");
+            file.println("Timestamp;Latitude;Longitude;distance;ax;ay;az;gx;gy;gz;");
             file.close();
         }
     }
 
+    
+
+    // Use the updated filename for logging
+    Serial.println("Logging to: " + filename);
+
     pinMode(36, INPUT_PULLUP);
     attachInterrupt(36, start_recordings, FALLING);
+
+    /*if (!recording) {
+        WiFi.begin("ESP-SERVER", "esp-server123");
+        while (WiFi.status() != WL_CONNECTED) {
+            delay(500);
+            Serial.print(".");
+        }
+        Serial.println("Connected to ESP-SERVER");*/
+
+        if (!SD.begin()) {
+            Serial.println("SD Card initialization failed!");
+            return;
+        }
+
+        server.on("/", handleRoot);
+        server.onNotFound(handleFileDownload);
+        server.begin();
+        Serial.println("Web server started");
+    //}
 }
 
 void loop() {
- /*   if (millis() - send_time >= 1200 && recording) {
-        int i = 16;
-        if (esp_now_send(BROADCST_ADDRESS, (uint8_t *) &i, sizeof(i)) == ESP_NOW_SEND_SUCCESS) {
-            last_sent = millis();
-        } else {
-            Serial.println("Failed");
-        }
-        send_time = millis();
-    }*/
     value = recording;
     if(prev_value != value) {
         esp_now_send(BROADCST_ADDRESS, (uint8_t*)&value, sizeof(int));
@@ -239,8 +302,44 @@ void loop() {
         display.print("Fix: ");
         display.setTextColor(fix ? OLED_Color_Green : OLED_Color_Red);
         display.println(fix ? "Yes" : "No");
+        display.setTextColor(OLED_Color_Blue);
         display.print("Recording: ");
+        display.setTextColor(OLED_Color_Red);
+        display.setTextColor(recording ? OLED_Color_Green : OLED_Color_Red);
         display.println(recording ? "Yes" : "No");
+        display.setTextColor(OLED_Color_Blue);
+        display.print("Wifi:");
+        if(WiFi.status() == WL_CONNECTED){
+            display.setTextColor(OLED_Color_Green);
+            display.println(" Conected");
+            display.setTextColor(OLED_Color_White);
+            display.println("");
+            display.print("  ");
+            display.println(WiFi.localIP());
+        }
+        else{
+            display.setTextColor(OLED_Color_Red);
+            display.println("Disconected");
+            display.setTextColor(OLED_Color_White);
+            display.println("");
+            display.println(filename);
+        }
         update_display = millis();
+    }
+
+    if (!recording) {
+        if(WiFi.status() != WL_CONNECTED) {
+            WiFi.begin("ESP-SERVER", "esp-server123");
+            Serial.println("Disconnected from Wi-Fi");
+        }
+        else{
+            server.handleClient();
+        }
+        
+    }
+
+    if (recording && WiFi.status() == WL_CONNECTED) {
+        WiFi.disconnect();
+        Serial.println("Disconnected from Wi-Fi");
     }
 }
