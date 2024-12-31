@@ -8,7 +8,7 @@
 #include <SD.h>
 #include <FS.h>
 #include <WebServer.h>
-#include <HardwareSerial.h>
+
 
 #define CS_PIN 5
 #define MOSI_PIN 23
@@ -39,6 +39,7 @@ unsigned long update_display = 0;
 unsigned long time_log = 0;
 unsigned long send_time = 0;
 unsigned long last_sent = 0;
+unsigned long gps_del = -5000;
 
 float ax, ay, az, gx, gy, gz;
 int tempo;
@@ -47,8 +48,8 @@ String filename = "/data_log.csv";
 esp_now_peer_info peer_info[3];
 int count = 0;
 
-//SoftwareSerial Serial_software(18, 19);
-HardwareSerial Serial_software(2);
+//SoftwareSerial gps_serial(12, 2);
+HardwareSerial gps_serial(2);
 TinyGPSPlus gps;
 
 int satellites = 0;
@@ -226,8 +227,8 @@ void setup() {
     update_display = millis();
     Serial.begin(9600);
     WiFi.mode(WIFI_STA);
-    //Serial_software.begin(9600);
-    Serial_software.begin(9600, SERIAL_8N1, 18, 19);
+    //gps_serial.begin(9600);
+    gps_serial.begin(9600, SERIAL_8N1, 12, 2);
     display.begin();
     display.setFont();
     display.fillScreen(OLED_Backround_Color);
@@ -307,37 +308,43 @@ void setup() {
         server.on("/delete", HTTP_POST, handleDelete);
         server.begin();
         Serial.println("Web server started");
+        
     //}
 }
 
 void loop() {
+
     value = recording;
     if(prev_value != value) {
         esp_now_send(BROADCST_ADDRESS, (uint8_t*)&value, sizeof(int));
         prev_value = value;
     }
-    Serial.println(Serial_software.read());
-    while (Serial_software.available() > 0) {
-        char gpsChar = Serial_software.read();
-        Serial.write(gpsChar);
-        gps.encode(gpsChar);
-        Serial.println("GPS");
-        if (gps.location.isUpdated()) {
-            decimalLatitude = gps.location.lat();
-            decimalLongitude = gps.location.lng();
-            fix = gps.location.isValid();
-            satellites = gps.satellites.value();
+   // Serial.println(recording);
+   
+if(millis() > 0){
+while (gps_serial.available() > 0) {
+    char gpsChar = gps_serial.read();
+    gps.encode(gpsChar);
+    Serial.print(gpsChar);
+    if (gps.location.isUpdated()) {
+        decimalLatitude = gps.location.lat();
+        decimalLongitude = gps.location.lng();
+        fix = gps.location.isValid();
+        satellites = gps.satellites.value();
 
-            Serial.print("Latitude: ");
-            Serial.println(decimalLatitude, 6);
-            Serial.print("Longitude: ");
-            Serial.println(decimalLongitude, 6);
-            Serial.print("Fix: ");
-            Serial.println(fix ? "Yes" : "No");
-            Serial.print("Satellites: ");
-            Serial.println(satellites);
-        }
+        Serial.print("Latitude: ");
+        Serial.println(decimalLatitude, 6);
+        Serial.print("Longitude: ");
+        Serial.println(decimalLongitude, 6);
+        Serial.print("Fix: ");
+        Serial.println(fix ? "Yes" : "No");
+        Serial.print("Satellites: ");
+        Serial.println(satellites);
     }
+}
+}       
+
+    
 
     if (millis() >= update_display + 1000) {
         display.fillScreen(OLED_Backround_Color);
@@ -390,7 +397,7 @@ void loop() {
     if (!recording) {
         if(WiFi.status() != WL_CONNECTED) {
             WiFi.begin("ESP-SERVER", "esp-server123");
-            Serial.println("Disconnected from Wi-Fi");
+            //Serial.println("Disconnected from Wi-Fi");
         }
         else{
             server.handleClient();
@@ -402,3 +409,15 @@ void loop() {
         WiFi.disconnect();
     }
 }
+
+
+/*
+void loop() {
+    while (gps_serial.available()) {
+        char c = gps_serial.read();  // Read a character from the GPS
+        gps.encode(c);               // Feed the character to TinyGPS++
+        Serial.write(c);             // Optional: Output raw data for debugging
+    }
+
+   
+}*/
