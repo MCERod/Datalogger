@@ -36,6 +36,7 @@ const uint8_t OLED_pin_dc_rs = 16;
 Adafruit_SSD1331 display = Adafruit_SSD1331(OLED_pin_cs_ss, OLED_pin_dc_rs, OLED_pin_sda_mosi, OLED_pin_scl_sck, OLED_pin_res_rst);
 
 unsigned long update_display = 0;
+unsigned long send_message = 0;
 unsigned long time_log = 0;
 unsigned long send_time = 0;
 unsigned long last_sent = 0;
@@ -315,31 +316,38 @@ void setup() {
 void loop() {
 
     value = recording;
-    if(prev_value != value) {
-        esp_now_send(BROADCST_ADDRESS, (uint8_t*)&value, sizeof(int));
-        prev_value = value;
-    }
+    //if(prev_value != value) {
+        if(value != 0){
+            value = 1;
+        }
+        if(millis()>= send_time + 500){
+            esp_now_send(BROADCST_ADDRESS, (uint8_t*)&value, sizeof(int));
+            send_time = millis();
+        }
+        
+        
+  //  }
    // Serial.println(recording);
    
 if(millis() > 0){
 while (gps_serial.available() > 0) {
     char gpsChar = gps_serial.read();
     gps.encode(gpsChar);
-    Serial.print(gpsChar);
+   // Serial.print(gpsChar);
     if (gps.location.isUpdated()) {
         decimalLatitude = gps.location.lat();
         decimalLongitude = gps.location.lng();
         fix = gps.location.isValid();
         satellites = gps.satellites.value();
 
-        Serial.print("Latitude: ");
+      /*  Serial.print("Latitude: ");
         Serial.println(decimalLatitude, 6);
         Serial.print("Longitude: ");
         Serial.println(decimalLongitude, 6);
         Serial.print("Fix: ");
         Serial.println(fix ? "Yes" : "No");
         Serial.print("Satellites: ");
-        Serial.println(satellites);
+        Serial.println(satellites);*/
     }
 }
 }       
