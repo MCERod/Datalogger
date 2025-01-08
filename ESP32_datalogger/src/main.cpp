@@ -15,6 +15,14 @@
 #define MISO_PIN 19
 #define SCK_PIN 18
 
+
+#define training_acquisition 1
+
+#if training_acquisition
+  #define STATE_CONDITION_BTN 27
+  volatile int road_state = 0;
+#endif
+
 const uint16_t OLED_Color_Black = 0x0000;
 const uint16_t OLED_Color_Blue = 0x001F;
 const uint16_t OLED_Color_Red = 0xF800;
@@ -103,6 +111,7 @@ int store_data(float latitude, float longitude) {
         Serial.println("Failed to open file for writing");
         return -1;
     }
+    road_state = digitalRead(STATE_CONDITION_BTN);
     for (int i = 0; i <= 5; i++) {
         file.print(incoming_readings[i].tempo);
         file.print(";");
@@ -124,6 +133,9 @@ int store_data(float latitude, float longitude) {
         file.print(";");
         file.print(incoming_readings[i].gz);
         file.print(";");
+        #if training_acquisition
+            file.print(road_state);
+        #endif
         file.println();
     }
     file.close();
@@ -225,6 +237,10 @@ void handleDelete() {
 }
 
 void setup() {
+  #if training_acquisition
+    pinMode(STATE_CONDITION_BTN, INPUT);
+  #endif
+
     update_display = millis();
     Serial.begin(9600);
     WiFi.mode(WIFI_STA);
@@ -277,8 +293,12 @@ void setup() {
         File file = SD.open(filename, FILE_WRITE);
     
         if (file) { // Check if the file opened successfully
+        #if training_acquisition
+            file.println("Timestamp;Latitude;Longitude;distance;ax;ay;az;gx;gy;gz;Road condition;");
+        #else
             file.println("Timestamp;Latitude;Longitude;distance;ax;ay;az;gx;gy;gz;");
             file.close();
+        #endif
         }
     }
 
