@@ -16,7 +16,9 @@
 #define SCK_PIN 18
 
 
-#define training_acquisition 1
+#define READINGS 4
+
+#define training_acquisition 0
 
 #if training_acquisition
   #define STATE_CONDITION_BTN 27
@@ -82,7 +84,7 @@ typedef struct struct_message {
     int tempo;
 } struct_message;
 
-struct_message incoming_readings[6];
+struct_message incoming_readings[READINGS];
 #define TFT_GRAY 0xBDF7
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -111,13 +113,20 @@ int store_data(float latitude, float longitude) {
         Serial.println("Failed to open file for writing");
         return -1;
     }
+    #if training_acquisition
     road_state = digitalRead(STATE_CONDITION_BTN);
-    for (int i = 0; i <= 5; i++) {
+    #endif
+    for (int i = 0; i <= READINGS-1; i++) {
         file.print(incoming_readings[i].tempo);
+        if(i > 0) {
+             Serial.println(incoming_readings[i].tempo - incoming_readings[i-1].tempo);
+        }
         file.print(";");
         file.print(latitude, 6);
         file.print(";");
         file.print(longitude, 6);
+        file.print(";");
+        file.print(satellites);
         file.print(";");
         file.print(incoming_readings[i].distance);
         file.print(";");
@@ -146,7 +155,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     memcpy(&incoming_readings, incomingData, sizeof(incoming_readings));
     Serial.print("Bytes received: ");
     Serial.println(len);
-    tempo = incoming_readings[0].tempo;
+    //tempo = incoming_readings[0].tempo;
     store_data(decimalLatitude, decimalLongitude);
     Serial.println(incoming_readings[0].ax);
 }
@@ -294,9 +303,9 @@ void setup() {
     
         if (file) { // Check if the file opened successfully
         #if training_acquisition
-            file.println("Timestamp;Latitude;Longitude;distance;ax;ay;az;gx;gy;gz;Road condition;");
+            file.println("Timestamp;Latitude;Longitude;N Satelites;distance;ax;ay;az;gx;gy;gz;Road condition;");
         #else
-            file.println("Timestamp;Latitude;Longitude;distance;ax;ay;az;gx;gy;gz;");
+            file.println("Timestamp;Latitude;Longitude;N Satelites;distance;ax;ay;az;gx;gy;gz;");
             file.close();
         #endif
         }
