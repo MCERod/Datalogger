@@ -7,7 +7,7 @@
 #include <TinyGPSPlus.h>
 #include <SD.h>
 #include <FS.h>
-#include <WebServer.h>
+
 
 
 #define CS_PIN 5
@@ -157,93 +157,10 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     Serial.println(len);
     //tempo = incoming_readings[0].tempo;
     store_data(decimalLatitude, decimalLongitude);
-    Serial.println(incoming_readings[0].ax);
+    Serial.println(incoming_readings[0].ay);
 }
 
-WebServer server(80);
 
-void handleRoot() {
-    File root = SD.open("/");
-    String html = "<html><body><h1>SD Card Files</h1><ul>";
-    while (File file = root.openNextFile()) {
-        if (!file.isDirectory()) {
-            html += "<li><a href=\"/download/" + String(file.name()) + "\">" + String(file.name()) + "</a></li>";
-        }
-    }
-    html += "</ul></body></html>";
-    server.send(200, "text/html", html);
-}
-
-void handleFileDownload() {
-    String path = server.uri();
-    if (path.startsWith("/download/")) {
-        String filename = path.substring(strlen("/download/"));
-        File file = SD.open("/" + filename);
-        if (file && !file.isDirectory()) {
-            server.streamFile(file, "application/octet-stream");
-            file.close();
-        } else {
-            server.send(404, "text/plain", "File Not Found");
-        }
-    } else {
-        server.send(404, "text/plain", "Not Found");
-    }
-}
-
-void handleFileList() {
-    String path = "/";
-    if (server.hasArg("dir")) {
-        path = server.arg("dir");
-    }
-
-    File dir = SD.open(path);
-    if (!dir || !dir.isDirectory()) {
-        server.send(500, "text/plain", "Failed to open directory");
-        return;
-    }
-
-    String page = "<h1>File List</h1><ul>";
-    while (true) {
-        File entry = dir.openNextFile();
-        if (!entry) {
-            // No more files
-            break;
-        }
-        if (entry.isDirectory()) {
-            page += "<li>[DIR] " + String(entry.name()) + "</li>";
-        } else {
-            String fileName = String(entry.name());
-            page += "<li>" + fileName;
-            page += " <form style='display:inline;' method='POST' action='/delete'>";
-            page += "<input type='hidden' name='file' value='" + fileName + "'>";
-            page += "<button type='submit'>Delete</button></form></li>";
-        }
-        entry.close();
-    }
-    page += "</ul>";
-    server.send(200, "text/html", page);
-}
-
-void handleDelete() {
-    if (server.method() == HTTP_POST) {
-        if (server.hasArg("file")) {
-            String fileName = server.arg("file");
-            if (SD.exists("/" + fileName)) {
-                if (SD.remove("/" + fileName)) {
-                    server.send(200, "text/plain", "File deleted successfully.");
-                } else {
-                    server.send(500, "text/plain", "Failed to delete file.");
-                }
-            } else {
-                server.send(404, "text/plain", "File not found.");
-            }
-        } else {
-            server.send(400, "text/plain", "BAD REQUEST");
-        }
-    } else {
-        server.send(405, "text/plain", "Method Not Allowed");
-    }
-}
 
 void setup() {
   #if training_acquisition
@@ -303,9 +220,9 @@ void setup() {
     
         if (file) { // Check if the file opened successfully
         #if training_acquisition
-            file.println("Timestamp;Latitude;Longitude;N Satelites;distance;ax;ay;az;gx;gy;gz;Road condition;");
+            file.println("Timestamp;Latitude;Longitude;N_Satelites;distance;ax;ay;az;gx;gy;gz;Road condition;");
         #else
-            file.println("Timestamp;Latitude;Longitude;N Satelites;distance;ax;ay;az;gx;gy;gz;");
+            file.println("Timestamp;Latitude;Longitude;N_Satelites;distance;ax;ay;az;gx;gy;gz;");
             file.close();
         #endif
         }
@@ -319,25 +236,13 @@ void setup() {
     pinMode(36, INPUT_PULLUP);
     attachInterrupt(36, start_recordings, FALLING);
 
-    /*if (!recording) {
-        WiFi.begin("ESP-SERVER", "esp-server123");
-        while (WiFi.status() != WL_CONNECTED) {
-            delay(500);
-            Serial.print(".");
-        }
-        Serial.println("Connected to ESP-SERVER");*/
-
+    
         if (!SD.begin()) {
             Serial.println("SD Card initialization failed!");
             return;
         }
 
-        server.on("/", handleRoot);
-        server.onNotFound(handleFileDownload);
-        server.on("/files", HTTP_GET, handleFileList);
-        server.on("/delete", HTTP_POST, handleDelete);
-        server.begin();
-        Serial.println("Web server started");
+        
         
     //}
 }
@@ -431,20 +336,9 @@ while (gps_serial.available() > 0) {
         update_display = millis();
     }
 
-    if (!recording) {
-        if(WiFi.status() != WL_CONNECTED) {
-            WiFi.begin("ESP-SERVER", "esp-server123");
-            //Serial.println("Disconnected from Wi-Fi");
-        }
-        else{
-            server.handleClient();
-        }
-        
-    }
+   
 
-    if (recording && WiFi.status() == WL_CONNECTED) {
-        WiFi.disconnect();
-    }
+   
 }
 
 
