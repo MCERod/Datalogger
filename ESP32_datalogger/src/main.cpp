@@ -70,7 +70,7 @@ bool fix = false;
 int sent = 0;
 int prev_value = 0;
 volatile int value = 0;
-
+volatile int last_first_time = 0;
 uint8_t BROADCST_ADDRESS[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 typedef struct struct_message {
@@ -88,9 +88,9 @@ struct_message incoming_readings[READINGS];
 #define TFT_GRAY 0xBDF7
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    Serial.print("\r\nLast Packet Send Status:\t");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-    success = (status == ESP_NOW_SEND_SUCCESS) ? "Delivery Success :)" : "Delivery Fail :(";
+   // Serial.print("\r\nLast Packet Send Status:\t");
+   // Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+   // success = (status == ESP_NOW_SEND_SUCCESS) ? "Delivery Success :)" : "Delivery Fail :(";
 }
 
 volatile boolean recording = false;
@@ -116,11 +116,12 @@ int store_data(float latitude, float longitude) {
     #if training_acquisition
     road_state = digitalRead(STATE_CONDITION_BTN);
     #endif
+    if (last_first_time == incoming_readings[0].tempo) {
+        return 0;
+        
+    }
     for (int i = 0; i <= READINGS-1; i++) {
         file.print(incoming_readings[i].tempo);
-        if(i > 0) {
-             Serial.println(incoming_readings[i].tempo - incoming_readings[i-1].tempo);
-        }
         file.print(";");
         file.print(latitude, 6);
         file.print(";");
@@ -146,6 +147,7 @@ int store_data(float latitude, float longitude) {
             file.print(road_state);
         #endif
         file.println();
+        last_first_time = incoming_readings[0].tempo;
     }
     file.close();
     return 1;
@@ -153,11 +155,7 @@ int store_data(float latitude, float longitude) {
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     memcpy(&incoming_readings, incomingData, sizeof(incoming_readings));
-    Serial.print("Bytes received: ");
-    Serial.println(len);
-    //tempo = incoming_readings[0].tempo;
     store_data(decimalLatitude, decimalLongitude);
-    Serial.println(incoming_readings[0].ay);
 }
 
 
@@ -173,6 +171,7 @@ void setup() {
     //gps_serial.begin(9600);
     gps_serial.begin(9600, SERIAL_8N1, 12, 2);
     display.begin();
+    display.setSPISpeed(80000000);
     display.setFont();
     display.fillScreen(OLED_Backround_Color);
     display.setTextColor(OLED_Text_Color);
@@ -199,6 +198,7 @@ void setup() {
     Serial.println("Setup feito");
 
     SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, CS_PIN);
+    SPI.setFrequency(25000000);
     if (!SD.begin(CS_PIN)) {
         Serial.println("Card Mount Failed");
         return;
@@ -250,7 +250,6 @@ void setup() {
 void loop() {
 
     value = recording;
-    //if(prev_value != value) {
         if(value != 0){
             value = 1;
         }
@@ -258,30 +257,20 @@ void loop() {
             esp_now_send(BROADCST_ADDRESS, (uint8_t*)&value, sizeof(int));
             send_time = millis();
         }
-        
-        
-  //  }
-   // Serial.println(recording);
+
    
 if(millis() > 0){
 while (gps_serial.available() > 0) {
     char gpsChar = gps_serial.read();
     gps.encode(gpsChar);
-   // Serial.print(gpsChar);
+
     if (gps.location.isUpdated()) {
         decimalLatitude = gps.location.lat();
         decimalLongitude = gps.location.lng();
         fix = gps.location.isValid();
         satellites = gps.satellites.value();
 
-      /*  Serial.print("Latitude: ");
-        Serial.println(decimalLatitude, 6);
-        Serial.print("Longitude: ");
-        Serial.println(decimalLongitude, 6);
-        Serial.print("Fix: ");
-        Serial.println(fix ? "Yes" : "No");
-        Serial.print("Satellites: ");
-        Serial.println(satellites);*/
+
     }
 }
 }       
@@ -342,13 +331,3 @@ while (gps_serial.available() > 0) {
 }
 
 
-/*
-void loop() {
-    while (gps_serial.available()) {
-        char c = gps_serial.read();  // Read a character from the GPS
-        gps.encode(c);               // Feed the character to TinyGPS++
-        Serial.write(c);             // Optional: Output raw data for debugging
-    }
-
-   
-}*/
