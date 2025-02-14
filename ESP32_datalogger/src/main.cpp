@@ -340,15 +340,3 @@ while (gps_serial.available() > 0) {
 
    
 }
-
-
-/*
-void loop() {
-    while (gps_serial.available()) {
-        char c = gps_serial.read();  // Read a character from the GPS
-        gps.encode(c);               // Feed the character to TinyGPS++
-        Serial.write(c);             // Optional: Output raw data for debugging
-    }
-
-   
-}*/
