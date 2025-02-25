@@ -9,7 +9,6 @@
 #include <FS.h>
 
 
-
 #define CS_PIN 5
 #define MOSI_PIN 23
 #define MISO_PIN 19
@@ -24,6 +23,10 @@
   #define STATE_CONDITION_BTN 27
   volatile int road_state = 0;
 #endif
+
+
+String hourPath = "";
+
 
 const uint16_t OLED_Color_Black = 0x0000;
 const uint16_t OLED_Color_Blue = 0x001F;
@@ -153,11 +156,38 @@ int store_data(float latitude, float longitude) {
     return 1;
 }
 
+// Callback function for ESPNOW
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-    memcpy(&incoming_readings, incomingData, sizeof(incoming_readings));
-    store_data(decimalLatitude, decimalLongitude);
-}
+    // Convert MAC to string
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
+    // Convert the MAC string to a String object
+    String senderMAC = String(macStr);
+
+    // Replace colons with underscores
+    senderMAC.replace(":", "_");
+
+    // Convert incoming data to string (or parse as needed)
+    String receivedMsg = "";
+    for (int i = 0; i < len; i++) {
+        receivedMsg += (char)incomingData[i];
+    }
+
+    // Construct file path
+    String filePath = hourPath + "/" + senderMAC + ".txt";
+
+    // Open / create file
+    File dataFile = SD.open(filePath, FILE_WRITE);
+    if (dataFile) {
+      dataFile.println(receivedMsg);
+      dataFile.close();
+      Serial.println("Data saved: " + filePath);
+    } else {
+      Serial.println("Failed to open file: " + filePath);
+    }
+}
 
 
 void setup() {
@@ -242,8 +272,63 @@ void setup() {
             return;
         }
 
-        
-        
+    // Wait for GPS signal
+    while (true) {
+        while (gps_serial.available() > 0) {
+            gps.encode(gps_serial.read());
+        }
+        if (gps.location.isUpdated()) {
+            break;
+        }
+        delay(1000);
+        Serial.println("Waiting for GPS signal...");
+    }
+
+    // Get current date and time from GPS
+    int year = gps.date.year();
+    int month = gps.date.month();
+    int day = gps.date.day();
+    int hour = gps.time.hour();
+    int minute = gps.time.minute();
+
+    // Create folder structure
+    String yearPath = "/" + String(year);
+    String monthPath = yearPath + "/" + String(month);
+    String dayPath = monthPath + "/" + String(day);
+     hourPath = dayPath + "/" + String(hour) + "_" + String(minute);
+
+    if (!SD.exists(yearPath)) {
+        if (SD.mkdir(yearPath)) {
+            Serial.println("Created folder: " + yearPath);
+        } else {
+            Serial.println("Failed to create folder: " + yearPath);
+        }
+    }
+
+    if (!SD.exists(monthPath)) {
+        if (SD.mkdir(monthPath)) {
+            Serial.println("Created folder: " + monthPath);
+        } else {
+            Serial.println("Failed to create folder: " + monthPath);
+        }
+    }
+
+    if (!SD.exists(dayPath)) {
+        if (SD.mkdir(dayPath)) {
+            Serial.println("Created folder: " + dayPath);
+        } else {
+            Serial.println("Failed to create folder: " + dayPath);
+        }
+    }
+
+    if (!SD.exists(hourPath)) {
+        if (SD.mkdir(hourPath)) {
+            Serial.println("Created folder: " + hourPath);
+        } else {
+            Serial.println("Failed to create folder: " + hourPath);
+        }
+    }
+
     //}
 }
 
